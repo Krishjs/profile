@@ -1,14 +1,29 @@
 var krishjs = {};
+var krishjs = krishjs || {};
+krishjs.detector = {
+    //Copied from the Threejs detector src: https://github.com/mrdoob/three.js/blob/master/examples/js/Detector.js
+    webgl: (function () {
+        try {
+            var canvas = document.createElement('canvas');
+            return !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+        } catch (e) {
+            return false;
+        }
+    })(),
+    canvas: !!window.CanvasRenderingContext2D,
+    workers: !!window.Worker,
+    fileapi: window.File && window.FileReader && window.FileList && window.Blob,
+};
 (function (kjs) {
 
-    function Position (x, y, z) {
+    function Position(x, y, z) {
         this._x = x !== undefined ? x : 0;
         this._y = y !== undefined ? y : 0;
         this._z = z !== undefined ? z : 0;
         this.onChangeCallBack = function () {};
     };
 
-    function Color (r, g, b) {
+    function Color(r, g, b) {
         this.r = r;
         this.g = g;
         this.b = b;
@@ -52,15 +67,244 @@ var krishjs = {};
     });
 
     kjs.universe = {
-        home: null
+        home: null,
+        init: function () {
+            this.home = new kjs.home({
+                frame: document.getElementById('container'),
+                width: window.innerWidth,
+                height: window.innerHeight,
+                onresizeManager: function () {
+                    return {
+                        width: window.innerWidth,
+                        height: window.innerHeight
+                    };
+                }
+            });
+        },
     };
 
-    kjs.home = function (container, width, height,length, position) {
-        this.container = container;
-        this._width = width !== undefined ? width :  1;
-        this._height = height !== undefined ? height :  1;
-        this._length = length !== undefined ? length :  1;
-        this._position = position !== undefined ? position :  new Position();
+    kjs.threejs = {};
+
+    kjs.threejs.helper = {
+        raycaster: null,
+        font: null,
+        init: function () {
+            this.raycaster = new THREE.Raycaster(), self = this;
+            var loader = new THREE.FontLoader();
+            loader.load('fonts/FontAwesome_Regular.json', function (response) {
+                self.font = response;
+            });
+        },
+        settings: {
+            segments: 32,
+            camera: {
+                angle: 45,
+                width: window.innerWidth,
+                height: window.innerHeight,
+                nearclip: 1,
+                farclip: 10000,
+                positionX: -250,
+                positionY: 500,
+                positionZ: 800
+            }
+        },
+        getScene: function () {
+            return new THREE.Scene();
+        },
+        getCamera: function (settings) {
+            if (settings === undefined) {
+                settings = this.settings.camera;
+            }
+            var camera = new THREE.PerspectiveCamera(settings.angle, settings.width / settings.height,
+                settings.nearclip, settings.farclip);
+            camera.position.set(settings.positionX, settings.positionY, settings.positionZ);
+            return camera;
+        },
+        getRenderer: function () {
+            return kjs.detector.webgl ? new THREE.WebGLRenderer({
+                alpha: true,
+                preserveDrawingBuffer: true
+            }) : new THREE.CanvasRenderer();
+        },
+        getControls: function (camera, domElement) {
+            if (camera === undefined) {
+                nakal.logger.error("Fatal Error! Camera not found")
+            }
+            var controls = new THREE.TrackballControls(camera, domElement);
+            controls.noPan = !0;
+            return controls;
+        },
+        getGeometry: function () {
+            return new THREE.Geometry();
+        },
+        getMesh: function (geometry, material) {
+            if (material) {
+                return new THREE.Mesh(geometry, material);
+            }
+            return new THREE.Mesh(geometry);
+        },
+        getMaterial: function (color, wireframe) {
+            return new THREE.MeshLambertMaterial({
+                color: color || this.getRandomColor(),
+                transparent: false,
+                opacity: this.Opacity.Normal,
+                flatShading: false,
+                wireframe: wireframe === undefined ? false : true,
+                side: THREE.DoubleSide
+            });
+        },
+        getMaterials: function (geometry) {
+            var materials = [];
+            for (var i = 0; i < geometry.faces.length; i++) {
+                materials.push(new THREE.MeshPhongMaterial({
+                    color: "#000000",
+                    shading: THREE.DoubleSided,
+                    wireframe: i % 2 === 0,
+                    overdraw: true
+                }));
+            }
+            return materials;
+        },
+        getCubeGeometry: function (x, y, z) {
+            var geometry = new THREE.BoxGeometry(x, y, z);
+            return geometry;
+        },
+        getCube: function (geometry, material) {
+            return new THREE.Mesh(geometry, material || this.getMaterial());
+        },
+        getGroup: function () {
+            return new THREE.Group();
+        },
+        getGroupAndaddObject: function (objects) {
+            var group = new THREE.Group();
+            objects.forEach(function (obj) {
+                group.add(obj);
+            });
+            return group;
+        },
+        Opacity: {
+            Normal: 1,
+            Highlight: 0.6,
+            Dim: 0.3
+        },
+        ArrayOrSingle: function (obj, fn) {
+            var self = this;
+            if (obj instanceof Array) {
+                obj.forEach(function (material, index, actual) {
+                    fn.call(self, material, index, actual);
+                });
+            } else {
+                fn(obj);
+            }
+        },
+        isGroup: function (obj) {
+            return obj instanceof THREE.Group;
+        },
+        setVisible: function (obj, flag) {
+            obj.material.visible = flag;
+        },
+        addAmbientlight: function (scene) {
+            var ambientLight = new THREE.AmbientLight(0x333333, 0.5);
+            scene.add(ambientLight);
+            return ambientLight;
+        },
+        addDirectionallight: function (scene) {
+            var light = new THREE.DirectionalLight(0xFFFFFF, 1.0);
+            scene.add(light);
+            return light;
+        },
+        getRandomColor: function () {
+            var letters = '0123456789ABCDEF';
+            var color = '#';
+            for (var i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+    };
+    kjs.events = {};
+
+    kjs.events = {
+        register: function (evt, fn) {
+            window.addEventListener(evt, fn, false);
+        }
+    };
+
+    kjs.animator = {
+        events: [],
+        init: function () {
+            var self = this;
+            requestAnimationFrame(function () {
+                self.animate();
+            });
+        },
+        animate: function () {
+            this.init();
+            this.events.forEach(function (evt) {
+                evt.method.apply(evt.scope, []);
+            });
+        },
+        register: function (evt) {
+            this.events.push({
+                method: evt.method,
+                scope: evt.scope
+            });
+        }
+    };
+
+    kjs.home = function (parameter) {
+
+        var helper = kjs.threejs.helper;
+
+        var getHandler = function (fn, scope) {
+            return function () {
+                return fn.apply(scope, Array.prototype.slice.call(arguments));
+            }
+        };
+
+        this.container = parameter.frame;
+
+        this.scene = helper.getScene();
+        this.camera = helper.getCamera();
+        this.renderer = helper.getRenderer();
+        this.renderer.setSize(parameter.width, parameter.height);
+        this.renderer.domElement.style.position = 'absolute';
+        this.renderer.domElement.style.top = 0;
+        this.renderer.domElement.style.zIndex = -1;
+        this.renderer.domElement.style.left = 0;
+        this.container.appendChild(this.renderer.domElement);
+        this.controls = helper.getControls(this.camera, this.renderer.domElement);
+
+        this._width = parameter.width !== undefined ? parameter.width : 1;
+        this._height = parameter.height !== undefined ? parameter.height : 1;
+        this._length = parameter.length !== undefined ? parameter.length : 1;
+        this._position = parameter.position !== undefined ? parameter.position : new Position();
+        this._onresizemanager = parameter.onresizeManager;
+
+        this.resizeHandler = function () {
+            var dimension = this._onresizemanager();
+            var width = dimension.width;
+            var height = dimension.height;
+            this.camera.aspect = width / height;
+            this.camera.updateProjectionMatrix();
+            this.drillChart.camera.aspect = width / height;
+            this.drillChart.camera.updateProjectionMatrix();
+            this.renderer.setSize(width, height);
+            this.animate();
+        };
+
+        this.animate = function () {
+            this.controls.update();
+            this.light.position.copy(this.camera.position);
+            this.renderer.render(this.scene, this.camera);
+        };
+
+        kjs.events.register('resize', getHandler(this.resizeHandler, this));
+
+        kjs.animator.register({
+            method: this.animate,
+            scope: this
+        });
     };
 
     Object.defineProperties(kjs.home.prototype, {
@@ -92,10 +336,13 @@ var krishjs = {};
         this.isTile = true;
 
         this.color = new Color();
-  
-        this.render = function () {
 
-        }
+        this.Object3D = null;
+
+        this.render = function () {
+            var helper = kjs.threejs.helper;
+            this.Object3D = helper.getCube(helper.getCubeGeometry(this._width, this._height, this._length));
+        };
     };
 
     Object.defineProperties(DominoTile.prototype, {
@@ -133,5 +380,6 @@ var krishjs = {};
 
         }
     });
+    kjs.universe.init();
 
 })(krishjs);
