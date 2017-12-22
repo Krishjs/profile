@@ -299,6 +299,10 @@ krishjs.detector = {
             this.renderer.render(this.scene, this.camera);
         };
 
+        this.addTile = function(tile){
+            this.scene.add(tile.Object3D);
+        };
+
         kjs.events.register('resize', getHandler(this.resizeHandler, this));
 
         kjs.animator.register({
