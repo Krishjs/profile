@@ -66,23 +66,6 @@ krishjs.detector = {
         }
     });
 
-    kjs.universe = {
-        home: null,
-        init: function () {
-            this.home = new kjs.home({
-                frame: document.getElementById('container'),
-                width: window.innerWidth,
-                height: window.innerHeight,
-                onresizeManager: function () {
-                    return {
-                        width: window.innerWidth,
-                        height: window.innerHeight
-                    };
-                }
-            });
-        },
-    };
-
     kjs.threejs = {};
 
     kjs.threejs.helper = {
@@ -103,9 +86,9 @@ krishjs.detector = {
                 height: window.innerHeight,
                 nearclip: 1,
                 farclip: 10000,
-                positionX: -250,
-                positionY: 500,
-                positionZ: 800
+                positionX: 82,
+                positionY: 350,
+                positionZ: 775
             }
         },
         getScene: function () {
@@ -222,6 +205,29 @@ krishjs.detector = {
             return color;
         }
     };
+    kjs.physics.helper = {
+        init: function () {
+
+        },
+        settings: {
+            worldscale: 100,
+        },
+        getWorld: function () {
+            return new OIMO.World({
+                info: true,
+                worldscale: this.settings.worldscale
+            });
+        },
+        getCube: function (size, position, world) {
+            return {
+                type: 'box',
+                size: size,
+                pos: position,
+                move: true,
+                world: world
+            };
+        }
+    };
     kjs.events = {};
 
     kjs.events = {
@@ -255,7 +261,7 @@ krishjs.detector = {
     kjs.home = function (parameter) {
 
         var helper = kjs.threejs.helper;
-
+        var physicsHelper = kjs.physics.helper;
         var getHandler = function (fn, scope) {
             return function () {
                 return fn.apply(scope, Array.prototype.slice.call(arguments));
@@ -274,12 +280,15 @@ krishjs.detector = {
         this.renderer.domElement.style.left = 0;
         this.container.appendChild(this.renderer.domElement);
         this.controls = helper.getControls(this.camera, this.renderer.domElement);
-
+        this.ambientLight = helper.addAmbientlight(this.scene);
+        this.light = helper.addDirectionallight(this.scene);
         this._width = parameter.width !== undefined ? parameter.width : 1;
         this._height = parameter.height !== undefined ? parameter.height : 1;
         this._length = parameter.length !== undefined ? parameter.length : 1;
         this._position = parameter.position !== undefined ? parameter.position : new Position();
         this._onresizemanager = parameter.onresizeManager;
+this.ground = helper.getPla
+        this.world = physicsHelper.getWorld();
 
         this.resizeHandler = function () {
             var dimension = this._onresizemanager();
@@ -287,21 +296,31 @@ krishjs.detector = {
             var height = dimension.height;
             this.camera.aspect = width / height;
             this.camera.updateProjectionMatrix();
-            this.drillChart.camera.aspect = width / height;
-            this.drillChart.camera.updateProjectionMatrix();
             this.renderer.setSize(width, height);
             this.animate();
         };
-
+        this.updatePhysics = function () {
+            var index = this.scene.children.length;
+            while (index--) {
+                var mesh = this.scene.children[index];
+                var body = mesh.userData.Body;
+                if (!body.sleeping) {
+                    mesh.position.copy(body.getPosition());
+                    mesh.quaternion.copy(body.getQuaternion());
+                }
+            }
+        };
         this.animate = function () {
+            this.updatePhysics();
             this.controls.update();
             this.light.position.copy(this.camera.position);
             this.renderer.render(this.scene, this.camera);
         };
 
-        this.addTile = function(tile){
+        this.addTile = function (tile) {
             this.scene.add(tile.Object3D);
         };
+
 
         kjs.events.register('resize', getHandler(this.resizeHandler, this));
 
@@ -329,11 +348,11 @@ krishjs.detector = {
         }
     });
 
-    function DominoTile() {
+    function DominoTile(width, height, length) {
 
-        this._width = width;
-        this._height = height;
-        this._length = length;
+        this._width = width !== undefined ? width : 5;
+        this._height = height !== undefined ? height : 20;
+        this._length = length !== undefined ? length : 10;
 
         this.type = 'DominoTile';
 
@@ -346,6 +365,7 @@ krishjs.detector = {
         this.render = function () {
             var helper = kjs.threejs.helper;
             this.Object3D = helper.getCube(helper.getCubeGeometry(this._width, this._height, this._length));
+            this.physicalObject = helper.getCube(helper.getCubeGeometry(this._width, this._height, this._length));
         };
     };
 
@@ -384,6 +404,32 @@ krishjs.detector = {
 
         }
     });
+    kjs.universe = {
+        home: null,
+        init: function () {
+            this.home = new kjs.home({
+                frame: document.getElementById('container'),
+                width: window.innerWidth,
+                height: window.innerHeight,
+                onresizeManager: function () {
+                    return {
+                        width: window.innerWidth,
+                        height: window.innerHeight
+                    };
+                }
+            });
+            var index = 0;
+            for (; index < 100;) {
+                var tile = new DominoTile();
+                tile.render();
+                tile.Object3D.position.x = -250 + index * 10;
+                this.home.addTile(tile);
+                index++;
+            }
+        },
+    };
+
     kjs.universe.init();
+    kjs.animator.init();
 
 })(krishjs);
