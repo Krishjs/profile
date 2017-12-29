@@ -251,8 +251,8 @@ krishjs.detector = {
         },
         getWorld: function () {
             return new OIMO.World({
-                info:true, 
-                worldscale:100
+                info: true,
+                worldscale: 100
             });
         },
         getPlane: function (size, object3D, world, move) {
@@ -274,7 +274,7 @@ krishjs.detector = {
         },
         getCube: function (size, object3D, world, move) {
             return {
-                type: 'box', 
+                type: 'box',
                 size: size,
                 pos: object3D.position.toArray(),
                 rot: object3D.rotation.toArray().slice(0, 3).map(function (radian) {
@@ -348,16 +348,22 @@ krishjs.detector = {
         this.background = helper.getBackGround();
         this.scene.add(this.background);
         var ToRad = 0.0174532925199432957;
+
         function addStaticBox(size, position, rotation, sc) {
-            var mesh = new THREE.Mesh(new THREE.BufferGeometry().fromGeometry( new THREE.BoxGeometry(1,1,1)), 
-            new THREE.MeshPhongMaterial( {shininess: 10, color:0x3D4143, transparent:true, opacity:0.5 } ));
+            var mesh = new THREE.Mesh(new THREE.BufferGeometry().fromGeometry(new THREE.BoxGeometry(1, 1, 1)),
+                new THREE.MeshPhongMaterial({
+                    shininess: 10,
+                    color: 0x3D4143,
+                    transparent: true,
+                    opacity: 0.5
+                }));
             mesh.scale.set(size[0], size[1], size[2]);
             mesh.position.set(position[0], position[1], position[2]);
             mesh.rotation.set(rotation[0] * ToRad, rotation[1] * ToRad, rotation[2] * ToRad);
             mesh.userData.isFloor = true;
             sc.add(mesh);
             mesh.castShadow = true;
-            mesh.receiveShadow = true;            
+            mesh.receiveShadow = true;
         }
         addStaticBox([400, 80, 400], [0, -40, 0], [0, 0, 0], this.scene);
         this._width = parameter.width !== undefined ? parameter.width : 1;
@@ -395,7 +401,8 @@ krishjs.detector = {
                 var mesh = this.scene.children[index];
                 var body = mesh.userData.body;
                 if (!mesh.userData.isFloor &&
-                    body !== undefined && !body.sleeping) {                    
+                    body !== undefined && !body.sleeping) {
+                    console.log(body.getPosition());
                     mesh.position.copy(body.getPosition());
                     mesh.quaternion.copy(body.getQuaternion());
                 }
@@ -458,7 +465,7 @@ krishjs.detector = {
         this.render = function (world) {
             var helper = kjs.threejs.helper;
             var physicsHelper = kjs.physics.helper;
-            this.Object3D = helper.getCube(helper.getCubeGeometry(this._width, this._height, this._length), helper.getMaterial('#966F33'));            
+            this.Object3D = helper.getCube(helper.getCubeGeometry(this._width, this._height, this._length), helper.getMaterial('#966F33'));
             //this.physicalObject = world.add(physicsHelper.getCube([this._width, this._height, this._length], this.Object3D, world, true));
             //this.Object3D.userData.body = this.physicalObject;
         };
@@ -513,21 +520,24 @@ krishjs.detector = {
                     };
                 }
             });
+
             var index = 0;
             for (; index < 100;) {
                 var tile = new DominoTile();
                 tile.render(this.home.world);
-                tile.Object3D.position.x = (window.innerWidth / 2) - (index * 10);
+                tile.Object3D.position.x = (window.innerWidth / 2) - (index * 10);                
                 tile.physicalObject = this.home.world.add({
-                           type:'box', 
-                           size:[this._width, this._height, this._length],
-                           pos:[tile.Object3D.position.x, tile.Object3D.position.y, tile.Object3D.position.z],
-                           move:true, 
-                           world:this.home.world});
+                    type: 'box',
+                    size: [tile.width, tile.height, tile.length],
+                    pos: [tile.Object3D.position.x, tile.Object3D.position.y, tile.Object3D.position.z],
+                    move: true,
+                    world: this.home.world
+                });
                 tile.Object3D.userData.body = tile.physicalObject;
                 this.home.addTile(tile);
                 index++;
             }
+            //this.home.world.gravity = new OIMO.Vec3(0, 9.8, 0);
         },
     };
 
