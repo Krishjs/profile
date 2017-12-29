@@ -81,14 +81,14 @@ krishjs.detector = {
         settings: {
             segments: 32,
             camera: {
-                angle: 45,
+                angle: 60,
                 width: window.innerWidth,
                 height: window.innerHeight,
                 nearclip: 1,
                 farclip: 10000,
-                positionX: 82,
-                positionY: 350,
-                positionZ: 775
+                positionX: 0,
+                positionY: 160,
+                positionZ: 400
             }
         },
         getScene: function () {
@@ -105,8 +105,8 @@ krishjs.detector = {
         },
         getRenderer: function () {
             return kjs.detector.webgl ? new THREE.WebGLRenderer({
-                alpha: true,
-                preserveDrawingBuffer: true
+                precision: "mediump",
+                antialias: true
             }) : new THREE.CanvasRenderer();
         },
         getControls: function (camera, domElement) {
@@ -148,11 +148,46 @@ krishjs.detector = {
             }
             return materials;
         },
+        gradTexture: function (color) {
+            var c = document.createElement("canvas");
+            var ct = c.getContext("2d");
+            var size = 1024;
+            c.width = 16;
+            c.height = size;
+            var gradient = ct.createLinearGradient(0, 0, 0, size);
+            var i = color[0].length;
+            while (i--) {
+                gradient.addColorStop(color[0][i], color[1][i]);
+            }
+            ct.fillStyle = gradient;
+            ct.fillRect(0, 0, 16, size);
+            var texture = new THREE.Texture(c);
+            texture.needsUpdate = true;
+            return texture;
+        },
+        getBackGround: function () {
+            var buffgeoBack = new THREE.BufferGeometry();
+            buffgeoBack.fromGeometry(new THREE.IcosahedronGeometry(3000, 2));
+            var bg = new THREE.Mesh(buffgeoBack, new THREE.MeshBasicMaterial({
+                map: this.gradTexture([
+                    [0.75, 0.6, 0.4, 0.25],
+                    ['#1B1D1E', '#3D4143', '#72797D', '#b0babf']
+                ]),
+                side: THREE.BackSide,
+                depthWrite: false,
+                fog: false
+            }));
+            return bg;
+        },
         getCubeGeometry: function (x, y, z) {
             var geometry = new THREE.BoxGeometry(x, y, z);
             return geometry;
         },
         getCube: function (geometry, material) {
+            return new THREE.Mesh(geometry, material || this.getMaterial());
+        },
+        getPlane: function (x, y, z, material) {
+            var geometry = new THREE.PlaneGeometry(x, y, z);
             return new THREE.Mesh(geometry, material || this.getMaterial());
         },
         getGroup: function () {
@@ -205,6 +240,8 @@ krishjs.detector = {
             return color;
         }
     };
+    kjs.physics = {};
+
     kjs.physics.helper = {
         init: function () {
 
@@ -214,17 +251,42 @@ krishjs.detector = {
         },
         getWorld: function () {
             return new OIMO.World({
-                info: true,
-                worldscale: this.settings.worldscale
+                info:true, 
+                worldscale:100
             });
         },
-        getCube: function (size, position, world) {
+        getPlane: function (size, object3D, world, move) {
             return {
-                type: 'box',
+                type: 'plane',
                 size: size,
-                pos: position,
-                move: true,
-                world: world
+                pos: object3D.position.toArray(),
+                rot: object3D.rotation.toArray().slice(0, 3).map(function (radian) {
+                    return radian * (180 / Math.PI);
+                }),
+                density: 1,
+                friction: 0.2,
+                restitution: 0.2,
+                belongsTo: 1,
+                collidesWith: 0xffffffff,
+                world: world,
+                move: move
+            };
+        },
+        getCube: function (size, object3D, world, move) {
+            return {
+                type: 'box', 
+                size: size,
+                pos: object3D.position.toArray(),
+                rot: object3D.rotation.toArray().slice(0, 3).map(function (radian) {
+                    return radian * (180 / Math.PI);
+                }),
+                density: 1,
+                friction: 0.2,
+                restitution: 0.2,
+                belongsTo: 1,
+                collidesWith: 0xffffffff,
+                world: world,
+                move: move
             };
         }
     };
@@ -282,14 +344,42 @@ krishjs.detector = {
         this.controls = helper.getControls(this.camera, this.renderer.domElement);
         this.ambientLight = helper.addAmbientlight(this.scene);
         this.light = helper.addDirectionallight(this.scene);
+
+        this.background = helper.getBackGround();
+        this.scene.add(this.background);
+        var ToRad = 0.0174532925199432957;
+        function addStaticBox(size, position, rotation, sc) {
+            var mesh = new THREE.Mesh(new THREE.BufferGeometry().fromGeometry( new THREE.BoxGeometry(1,1,1)), 
+            new THREE.MeshPhongMaterial( {shininess: 10, color:0x3D4143, transparent:true, opacity:0.5 } ));
+            mesh.scale.set(size[0], size[1], size[2]);
+            mesh.position.set(position[0], position[1], position[2]);
+            mesh.rotation.set(rotation[0] * ToRad, rotation[1] * ToRad, rotation[2] * ToRad);
+            mesh.userData.isFloor = true;
+            sc.add(mesh);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;            
+        }
+        addStaticBox([400, 80, 400], [0, -40, 0], [0, 0, 0], this.scene);
         this._width = parameter.width !== undefined ? parameter.width : 1;
         this._height = parameter.height !== undefined ? parameter.height : 1;
         this._length = parameter.length !== undefined ? parameter.length : 1;
         this._position = parameter.position !== undefined ? parameter.position : new Position();
         this._onresizemanager = parameter.onresizeManager;
-this.ground = helper.getPla
         this.world = physicsHelper.getWorld();
-
+        this.floor = helper.getPlane(parameter.width, parameter.height, parameter.height, new THREE.MeshBasicMaterial({
+            color: 0xC0C0C0,
+        }));
+        this.floor.position.y = -10;
+        var ground = this.world.add({
+            size: [400, 80, 400],
+            pos: [0, -40, 0],
+            world: this.world
+        });
+        //this.floor.rotation.x = -Math.PI / 2;
+        this.floor.userData.isFloor = true;
+        //this.scene.add(this.floor);
+        this.physicalFloor = this.world.add(physicsHelper.getCube([parameter.width, parameter.height, parameter.height], this.floor, this.world, false));
+        this.floor.userData.body = this.physicalFloor;
         this.resizeHandler = function () {
             var dimension = this._onresizemanager();
             var width = dimension.width;
@@ -303,24 +393,22 @@ this.ground = helper.getPla
             var index = this.scene.children.length;
             while (index--) {
                 var mesh = this.scene.children[index];
-                var body = mesh.userData.Body;
-                if (!body.sleeping) {
+                var body = mesh.userData.body;
+                if (!mesh.userData.isFloor &&
+                    body !== undefined && !body.sleeping) {                    
                     mesh.position.copy(body.getPosition());
                     mesh.quaternion.copy(body.getQuaternion());
                 }
             }
+            this.world.step();
         };
+
         this.animate = function () {
-            this.updatePhysics();
             this.controls.update();
             this.light.position.copy(this.camera.position);
             this.renderer.render(this.scene, this.camera);
+            this.updatePhysics();
         };
-
-        this.addTile = function (tile) {
-            this.scene.add(tile.Object3D);
-        };
-
 
         kjs.events.register('resize', getHandler(this.resizeHandler, this));
 
@@ -345,6 +433,9 @@ this.ground = helper.getPla
     Object.assign(kjs.home.prototype, {
         init: function () {
 
+        },
+        addTile: function (tile) {
+            this.scene.add(tile.Object3D);
         }
     });
 
@@ -362,10 +453,14 @@ this.ground = helper.getPla
 
         this.Object3D = null;
 
-        this.render = function () {
+        this.physicalObject = null;
+
+        this.render = function (world) {
             var helper = kjs.threejs.helper;
-            this.Object3D = helper.getCube(helper.getCubeGeometry(this._width, this._height, this._length));
-            this.physicalObject = helper.getCube(helper.getCubeGeometry(this._width, this._height, this._length));
+            var physicsHelper = kjs.physics.helper;
+            this.Object3D = helper.getCube(helper.getCubeGeometry(this._width, this._height, this._length), helper.getMaterial('#966F33'));            
+            //this.physicalObject = world.add(physicsHelper.getCube([this._width, this._height, this._length], this.Object3D, world, true));
+            //this.Object3D.userData.body = this.physicalObject;
         };
     };
 
@@ -421,8 +516,15 @@ this.ground = helper.getPla
             var index = 0;
             for (; index < 100;) {
                 var tile = new DominoTile();
-                tile.render();
-                tile.Object3D.position.x = -250 + index * 10;
+                tile.render(this.home.world);
+                tile.Object3D.position.x = (window.innerWidth / 2) - (index * 10);
+                tile.physicalObject = this.home.world.add({
+                           type:'box', 
+                           size:[this._width, this._height, this._length],
+                           pos:[tile.Object3D.position.x, tile.Object3D.position.y, tile.Object3D.position.z],
+                           move:true, 
+                           world:this.home.world});
+                tile.Object3D.userData.body = tile.physicalObject;
                 this.home.addTile(tile);
                 index++;
             }
